@@ -286,7 +286,7 @@ def main():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         batch_size = args.eval_batch
         model, tokenizer = load_model_and_tokenizer(args.model, args.from_local, device)
-        task_dir = create_new_task_dir(args.project_dir)
+        #task_dir = create_new_task_dir(args.project_dir)
         eval_ds = load_eval_data(
             args.dataset, 
             args.eval_split, 
