@@ -17,6 +17,9 @@ import GPUtil
 import json
 import sys
 
+import utils
+from trainer import RegularizedTrainer
+
 
 ''' 
 == Argument Parsing ==
@@ -53,6 +56,10 @@ def parse_args():
     parser.add_argument('--metric', type=str, default='accuracy', help="Metric to evaluate (e.g., accuracy, f1, precision, recall)")
     parser.add_argument('--eval_only', action="store_true")
     parser.add_argument('--eval_batch', type=int, default=None)
+    parser.add_argument('--regularize', action='store_true')
+    parser.add_argument('--reg_fn', type=str, default=None)
+    parser.add_argument('--reg_reference', type=str, default=None, help="Path to .pt file with saved model wrights")
+    parser.add_argument('--reg_coeff', type=float, default = 1e-3)
 
     if '--arg_file' in sys.argv:
         index = sys.argv.index('--arg_file')
@@ -212,13 +219,30 @@ def train(model, tokenizer, train_ds, eval_ds, args, device, task_dir):
         predictions = np.argmax(logits, axis = -1)
         return metric.compute(predictions=predictions,references=labels)
     
-    trainer = Trainer(
+    if args.regularize:
+        try:
+            reg_fn = getattr(utils, args.reg_fn) if args.reg_fn else None
+        except AttributeError:
+            raise ValueError(f"Unknown regularization function: {args.reg_fn}")
+        ref_path = args.reg_reference
+        ref_state = torch.load(ref_path, map_location='cpu')
+        reg_coeff = args.reg_coeff
+    else:
+        reg_fn = None
+        ref_state = None
+        reg_coeff = None
+
+    trainer = RegularizedTrainer(
         model=model,
         args=training_args,
         train_dataset=train_data,
         eval_dataset=eval_data,
         tokenizer=tokenizer,
-        compute_metrics=compute_metrics
+        compute_metrics=compute_metrics,
+        regularized=args.regularize,
+        reg=reg_fn
+        reg_kwargs={"ref_state": ref_state},
+        reg_coeff=reg_coeff
     )
 
     trainer.train()
@@ -312,7 +336,7 @@ def main():
             args.eval_size,
             args.skip_label_map
         )
-        model=train(model,tokenizer,train_ds,eval_ds, args, device, task_dir)
+        model=train(model,tokenizer,train_ds,eval_ds,args,device,task_dir)
 
 if __name__ == '__main__':
     main()
