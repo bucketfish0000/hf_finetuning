@@ -130,6 +130,19 @@ def load_eval_data(dataset_name, eval_split, text_column, label_column, eval_siz
         eval_ds = eval_ds.map(lambda x: {'label': int(x[label_column])}, remove_columns=[label_column])
     return eval_ds
 
+def align_labels(ds, model):
+    if not hasattr(model.config, "label2id"):
+        raise ValueError("Model config missing label2id.")
+    label2id = {k.lower(): v for k, v in model.config.label2id.items()}
+    def map_label(example):
+        label_text = example["label"]
+        label_key = label_text.lower() if isinstance(label_text, str) else str(label_text)
+        if label_key not in label2id:
+            raise ValueError(f"Label '{label_text}' not in model config.label2id")
+        return {"label": label2id[label_key]}
+    return ds.map(map_label)
+
+
 '''
 ========
 '''
@@ -240,7 +253,7 @@ def train(model, tokenizer, train_ds, eval_ds, args, device, task_dir):
         tokenizer=tokenizer,
         compute_metrics=compute_metrics,
         regularized=args.regularize,
-        reg=reg_fn
+        reg_fn=reg_fn,
         reg_kwargs={"ref_state": ref_state},
         reg_coeff=reg_coeff
     )
@@ -258,6 +271,8 @@ def train(model, tokenizer, train_ds, eval_ds, args, device, task_dir):
                 fout.write(json.dumps({"step": step, **metrics}) + "\n")
     print(f"[INFO] Eval history saved to", out_path)
 
+    model.config.id2label = {0: "negative", 1: "positive"}
+    model.config.label2id = {"negative": 0, "positive": 1}
 
     model_path = os.path.join(task_dir, "final_model.pt")
     torch.save(model.state_dict(), model_path)
@@ -272,6 +287,10 @@ def evaluate_model(model,tokenizer, eval_ds, args, device, task_dir):
         eval_data = preprocess_eval(eval_ds, tokenizer, args.text_col)
     else:
         eval_data = eval_ds
+    
+    model.config.label2id = {"negative": 0, "positive": 1}
+    model.config.id2label = {0: "negative", 1: "positive"}
+    eval_data = align_labels(eval_data, model)
     
     training_args = TrainingArguments(
         output_dir = os.path.join(task_dir),

@@ -23,7 +23,7 @@ class RegularizedTrainer(Trainer):
             self.reg_fn = None
             self.reg_coeff = 0.0
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False,**kwargs):
         outputs = model(**inputs)
         loss = outputs.loss
 
